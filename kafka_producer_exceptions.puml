@@ -1,0 +1,259 @@
+@startuml KafkaProducerExceptions
+!theme plain
+skinparam backgroundColor white
+skinparam class {
+    BackgroundColor lightgreen
+    BorderColor darkgreen
+    ArrowColor darkgreen
+}
+
+title Kafka Producer Exception Hierarchy
+
+' Base Java exceptions
+class RuntimeException {
+    +getMessage(): String
+    +getCause(): Throwable
+}
+
+' Kafka base exceptions
+abstract class KafkaException {
+    +KafkaException(message: String)
+    +KafkaException(message: String, cause: Throwable)
+}
+
+abstract class ApiException {
+    +ApiException(message: String)
+    +ApiException(message: String, cause: Throwable)
+}
+
+abstract class RetriableException {
+    +RetriableException(message: String)
+    +RetriableException(message: String, cause: Throwable)
+}
+
+' Producer-specific exceptions
+class BufferExhaustedException {
+    +BufferExhaustedException(message: String)
+    --
+    Thrown when producer buffer is full
+    and cannot accept more records
+}
+
+class RecordTooLargeException {
+    +RecordTooLargeException(message: String)
+    --
+    Record exceeds max.request.size
+    or message.max.bytes
+}
+
+class TimeoutException {
+    +TimeoutException(message: String)
+    +TimeoutException(message: String, cause: Throwable)
+    --
+    Operation timed out
+}
+
+class SerializationException {
+    +SerializationException(message: String)
+    +SerializationException(message: String, cause: Throwable)
+    --
+    Key/Value serialization failed
+}
+
+class InterruptException {
+    +InterruptException(message: String)
+    +InterruptException(cause: InterruptedException)
+    --
+    Thread was interrupted
+}
+
+class ProducerFencedException {
+    +ProducerFencedException(message: String)
+    --
+    Producer has been fenced by
+    newer producer with same transactional.id
+}
+
+class InvalidProducerEpochException {
+    +InvalidProducerEpochException(message: String)
+    --
+    Producer epoch is invalid
+    (transactional producer)
+}
+
+class OutOfOrderSequenceException {
+    +OutOfOrderSequenceException(message: String)
+    --
+    Broker received out of order
+    sequence number
+}
+
+class UnsupportedVersionException {
+    +UnsupportedVersionException(message: String)
+    --
+    API version not supported
+    by broker
+}
+
+class AuthenticationException {
+    +AuthenticationException(message: String)
+    --
+    Authentication failed
+}
+
+class AuthorizationException {
+    +AuthorizationException(message: String)
+    --
+    Not authorized to perform operation
+}
+
+class InvalidTopicException {
+    +InvalidTopicException(message: String)
+    --
+    Topic name is invalid
+}
+
+class UnknownTopicOrPartitionException {
+    +UnknownTopicOrPartitionException(message: String)
+    --
+    Topic or partition does not exist
+}
+
+class LeaderNotAvailableException {
+    +LeaderNotAvailableException(message: String)
+    --
+    Partition leader not available
+}
+
+class NotLeaderForPartitionException {
+    +NotLeaderForPartitionException(message: String)
+    --
+    Broker is not leader for partition
+}
+
+class NetworkException {
+    +NetworkException(message: String)
+    +NetworkException(message: String, cause: Throwable)
+    --
+    Network I/O error
+}
+
+class NotEnoughReplicasException {
+    +NotEnoughReplicasException(message: String)
+    --
+    Not enough in-sync replicas
+}
+
+class NotEnoughReplicasAfterAppendException {
+    +NotEnoughReplicasAfterAppendException(message: String)
+    --
+    Not enough replicas after append
+}
+
+class CorruptRecordException {
+    +CorruptRecordException(message: String)
+    --
+    Record failed CRC check
+}
+
+class InvalidMetadataException {
+    +InvalidMetadataException(message: String)
+    --
+    Metadata is invalid or stale
+}
+
+class ClusterAuthorizationException {
+    +ClusterAuthorizationException(message: String)
+    --
+    Not authorized for cluster operation
+}
+
+class TopicAuthorizationException {
+    +TopicAuthorizationException(message: String)
+    +getUnauthorizedTopics(): Set<String>
+    --
+    Not authorized for topic operations
+}
+
+class TransactionalIdAuthorizationException {
+    +TransactionalIdAuthorizationException(message: String)
+    --
+    Not authorized for transactional.id
+}
+
+class InvalidTxnStateException {
+    +InvalidTxnStateException(message: String)
+    --
+    Invalid transaction state
+}
+
+class InvalidPidMappingException {
+    +InvalidPidMappingException(message: String)
+    --
+    Invalid producer ID mapping
+}
+
+class UnknownProducerIdException {
+    +UnknownProducerIdException(message: String)
+    --
+    Producer ID is unknown to broker
+}
+
+' Inheritance relationships
+RuntimeException <|-- KafkaException
+KafkaException <|-- ApiException
+KafkaException <|-- BufferExhaustedException
+KafkaException <|-- SerializationException
+KafkaException <|-- InterruptException
+
+ApiException <|-- RetriableException
+ApiException <|-- RecordTooLargeException
+ApiException <|-- UnsupportedVersionException
+ApiException <|-- AuthenticationException
+ApiException <|-- AuthorizationException
+ApiException <|-- InvalidTopicException
+ApiException <|-- ProducerFencedException
+ApiException <|-- InvalidProducerEpochException
+ApiException <|-- OutOfOrderSequenceException
+ApiException <|-- InvalidTxnStateException
+ApiException <|-- InvalidPidMappingException
+ApiException <|-- UnknownProducerIdException
+
+RetriableException <|-- TimeoutException
+RetriableException <|-- UnknownTopicOrPartitionException
+RetriableException <|-- LeaderNotAvailableException
+RetriableException <|-- NotLeaderForPartitionException
+RetriableException <|-- NetworkException
+RetriableException <|-- NotEnoughReplicasException
+RetriableException <|-- NotEnoughReplicasAfterAppendException
+RetriableException <|-- CorruptRecordException
+RetriableException <|-- InvalidMetadataException
+
+AuthorizationException <|-- ClusterAuthorizationException
+AuthorizationException <|-- TopicAuthorizationException
+AuthorizationException <|-- TransactionalIdAuthorizationException
+
+note right of RetriableException
+    These exceptions indicate transient
+    failures that may succeed if retried
+    with appropriate backoff strategy.
+end note
+
+note right of ProducerFencedException
+    Transactional producers can be fenced
+    when a newer producer with the same
+    transactional.id is initialized.
+end note
+
+note right of BufferExhaustedException
+    Occurs when producer buffer is full.
+    Can be avoided by configuring larger
+    buffer.memory or implementing backpressure.
+end note
+
+note right of TopicAuthorizationException
+    Contains set of unauthorized topics
+    for more specific error handling.
+end note
+
+@enduml

@@ -1,0 +1,390 @@
+@startuml KafkaAllExceptionsOverview
+!theme plain
+skinparam backgroundColor white
+skinparam class {
+    BackgroundColor white
+    BorderColor black
+    ArrowColor black
+}
+
+title Kafka Client Exception Hierarchy - Complete Overview
+
+' Base exceptions
+class RuntimeException {
+    +getMessage(): String
+    +getCause(): Throwable
+}
+
+abstract class KafkaException {
+    +KafkaException(message: String)
+    +KafkaException(message: String, cause: Throwable)
+    --
+    Base for all Kafka exceptions
+}
+
+abstract class ApiException {
+    +ApiException(message: String)
+    +ApiException(message: String, cause: Throwable)
+    --
+    Base for API-related exceptions
+}
+
+abstract class RetriableException {
+    +RetriableException(message: String)
+    +RetriableException(message: String, cause: Throwable)
+    --
+    Indicates operation can be retried
+}
+
+' Common exceptions across clients
+class TimeoutException {
+    +TimeoutException(message: String)
+    --
+    Operation timed out
+}
+
+class AuthenticationException {
+    +AuthenticationException(message: String)
+    --
+    Authentication failed
+}
+
+class AuthorizationException {
+    +AuthorizationException(message: String)
+    --
+    Not authorized for operation
+}
+
+class NetworkException {
+    +NetworkException(message: String)
+    --
+    Network I/O error
+}
+
+class SerializationException {
+    +SerializationException(message: String)
+    --
+    Serialization/deserialization failed
+}
+
+class InterruptException {
+    +InterruptException(message: String)
+    --
+    Thread was interrupted
+}
+
+class UnsupportedVersionException {
+    +UnsupportedVersionException(message: String)
+    --
+    API version not supported
+}
+
+class InvalidTopicException {
+    +InvalidTopicException(message: String)
+    --
+    Topic name is invalid
+}
+
+class UnknownTopicOrPartitionException {
+    +UnknownTopicOrPartitionException(message: String)
+    --
+    Topic/partition does not exist
+}
+
+class LeaderNotAvailableException {
+    +LeaderNotAvailableException(message: String)
+    --
+    Partition leader not available
+}
+
+class NotLeaderForPartitionException {
+    +NotLeaderForPartitionException(message: String)
+    --
+    Broker is not partition leader
+}
+
+class InvalidMetadataException {
+    +InvalidMetadataException(message: String)
+    --
+    Metadata is invalid or stale
+}
+
+class CorruptRecordException {
+    +CorruptRecordException(message: String)
+    --
+    Record failed CRC check
+}
+
+' Producer-specific exceptions
+package "Producer Exceptions" #lightgreen {
+    class BufferExhaustedException {
+        +BufferExhaustedException(message: String)
+        --
+        Producer buffer is full
+    }
+    
+    class RecordTooLargeException {
+        +RecordTooLargeException(message: String)
+        --
+        Record exceeds size limit
+    }
+    
+    class ProducerFencedException {
+        +ProducerFencedException(message: String)
+        --
+        Producer fenced by newer instance
+    }
+    
+    class OutOfOrderSequenceException {
+        +OutOfOrderSequenceException(message: String)
+        --
+        Out of order sequence number
+    }
+    
+    class InvalidProducerEpochException {
+        +InvalidProducerEpochException(message: String)
+        --
+        Producer epoch is invalid
+    }
+    
+    class NotEnoughReplicasException {
+        +NotEnoughReplicasException(message: String)
+        --
+        Not enough in-sync replicas
+    }
+}
+
+' Consumer-specific exceptions
+package "Consumer Exceptions" #lightblue {
+    class WakeupException {
+        +WakeupException()
+        --
+        Consumer.wakeup() called
+    }
+    
+    class CommitFailedException {
+        +CommitFailedException(message: String)
+        --
+        Offset commit failed
+    }
+    
+    class OffsetOutOfRangeException {
+        +OffsetOutOfRangeException(message: String)
+        --
+        Offset is out of range
+    }
+    
+    class NoOffsetForPartitionException {
+        +NoOffsetForPartitionException(message: String)
+        --
+        No offset found for partition
+    }
+    
+    class RebalanceInProgressException {
+        +RebalanceInProgressException(message: String)
+        --
+        Group rebalance in progress
+    }
+    
+    class IllegalGenerationException {
+        +IllegalGenerationException(message: String)
+        --
+        Consumer generation invalid
+    }
+    
+    class UnknownMemberIdException {
+        +UnknownMemberIdException(message: String)
+        --
+        Consumer member ID unknown
+    }
+    
+    class FencedInstanceIdException {
+        +FencedInstanceIdException(message: String)
+        --
+        Static consumer instance fenced
+    }
+}
+
+' Admin-specific exceptions
+package "Admin Exceptions" #lightyellow {
+    class TopicExistsException {
+        +TopicExistsException(message: String)
+        --
+        Topic already exists
+    }
+    
+    class NotControllerException {
+        +NotControllerException(message: String)
+        --
+        Broker is not controller
+    }
+    
+    class ControllerMovedException {
+        +ControllerMovedException(message: String)
+        --
+        Controller moved to another broker
+    }
+    
+    class PolicyViolationException {
+        +PolicyViolationException(message: String)
+        --
+        Operation violates policy
+    }
+    
+    class InvalidPartitionsException {
+        +InvalidPartitionsException(message: String)
+        --
+        Invalid partition count
+    }
+    
+    class InvalidReplicationFactorException {
+        +InvalidReplicationFactorException(message: String)
+        --
+        Invalid replication factor
+    }
+    
+    class GroupIdNotFoundException {
+        +GroupIdNotFoundException(message: String)
+        --
+        Consumer group not found
+    }
+    
+    class GroupNotEmptyException {
+        +GroupNotEmptyException(message: String)
+        --
+        Consumer group not empty
+    }
+}
+
+' Authorization exceptions
+package "Authorization Exceptions" #lightcoral {
+    class ClusterAuthorizationException {
+        +ClusterAuthorizationException(message: String)
+        --
+        Not authorized for cluster
+    }
+    
+    class TopicAuthorizationException {
+        +TopicAuthorizationException(message: String)
+        +getUnauthorizedTopics(): Set<String>
+        --
+        Not authorized for topics
+    }
+    
+    class GroupAuthorizationException {
+        +GroupAuthorizationException(message: String)
+        +getGroupId(): String
+        --
+        Not authorized for group
+    }
+    
+    class TransactionalIdAuthorizationException {
+        +TransactionalIdAuthorizationException(message: String)
+        --
+        Not authorized for transactional ID
+    }
+}
+
+' Coordinator exceptions
+package "Coordinator Exceptions" #lightgray {
+    class CoordinatorNotAvailableException {
+        +CoordinatorNotAvailableException(message: String)
+        --
+        Coordinator not available
+    }
+    
+    class NotCoordinatorException {
+        +NotCoordinatorException(message: String)
+        --
+        Broker is not coordinator
+    }
+}
+
+' Base inheritance
+RuntimeException <|-- KafkaException
+KafkaException <|-- ApiException
+KafkaException <|-- SerializationException
+KafkaException <|-- InterruptException
+
+ApiException <|-- RetriableException
+ApiException <|-- AuthenticationException
+ApiException <|-- AuthorizationException
+ApiException <|-- UnsupportedVersionException
+ApiException <|-- InvalidTopicException
+
+RetriableException <|-- TimeoutException
+RetriableException <|-- NetworkException
+RetriableException <|-- UnknownTopicOrPartitionException
+RetriableException <|-- LeaderNotAvailableException
+RetriableException <|-- NotLeaderForPartitionException
+RetriableException <|-- InvalidMetadataException
+RetriableException <|-- CorruptRecordException
+
+' Producer exception inheritance
+KafkaException <|-- BufferExhaustedException
+ApiException <|-- RecordTooLargeException
+ApiException <|-- ProducerFencedException
+ApiException <|-- OutOfOrderSequenceException
+ApiException <|-- InvalidProducerEpochException
+RetriableException <|-- NotEnoughReplicasException
+
+' Consumer exception inheritance
+KafkaException <|-- WakeupException
+ApiException <|-- CommitFailedException
+ApiException <|-- NoOffsetForPartitionException
+ApiException <|-- FencedInstanceIdException
+RetriableException <|-- OffsetOutOfRangeException
+RetriableException <|-- RebalanceInProgressException
+RetriableException <|-- IllegalGenerationException
+RetriableException <|-- UnknownMemberIdException
+
+' Admin exception inheritance
+ApiException <|-- TopicExistsException
+ApiException <|-- PolicyViolationException
+ApiException <|-- InvalidPartitionsException
+ApiException <|-- InvalidReplicationFactorException
+ApiException <|-- GroupIdNotFoundException
+ApiException <|-- GroupNotEmptyException
+RetriableException <|-- NotControllerException
+RetriableException <|-- ControllerMovedException
+
+' Authorization inheritance
+AuthorizationException <|-- ClusterAuthorizationException
+AuthorizationException <|-- TopicAuthorizationException
+AuthorizationException <|-- GroupAuthorizationException
+AuthorizationException <|-- TransactionalIdAuthorizationException
+
+' Coordinator inheritance
+RetriableException <|-- CoordinatorNotAvailableException
+RetriableException <|-- NotCoordinatorException
+
+note top of KafkaException
+    Base exception for all Kafka client errors.
+    Extends RuntimeException for unchecked exceptions.
+end note
+
+note top of RetriableException
+    Indicates transient failures that may succeed
+    if retried with appropriate backoff strategy.
+    Used by all three clients for retry logic.
+end note
+
+note right of "Producer Exceptions"
+    Producer-specific exceptions focus on
+    buffer management, record size limits,
+    and transactional producer states.
+end note
+
+note right of "Consumer Exceptions"
+    Consumer-specific exceptions handle
+    group coordination, offset management,
+    and partition assignment issues.
+end note
+
+note right of "Admin Exceptions"
+    Admin-specific exceptions cover cluster
+    management, topic operations, and
+    administrative policy violations.
+end note
+
+@enduml

@@ -1,0 +1,378 @@
+@startuml KafkaAdminExceptions
+!theme plain
+skinparam backgroundColor white
+skinparam class {
+    BackgroundColor lightyellow
+    BorderColor darkorange
+    ArrowColor darkorange
+}
+
+title Kafka Admin Client Exception Hierarchy
+
+' Base Java exceptions
+class RuntimeException {
+    +getMessage(): String
+    +getCause(): Throwable
+}
+
+class IllegalArgumentException {
+    +IllegalArgumentException(message: String)
+}
+
+' Kafka base exceptions
+abstract class KafkaException {
+    +KafkaException(message: String)
+    +KafkaException(message: String, cause: Throwable)
+}
+
+abstract class ApiException {
+    +ApiException(message: String)
+    +ApiException(message: String, cause: Throwable)
+}
+
+abstract class RetriableException {
+    +RetriableException(message: String)
+    +RetriableException(message: String, cause: Throwable)
+}
+
+' Admin-specific exceptions
+class TimeoutException {
+    +TimeoutException(message: String)
+    +TimeoutException(message: String, cause: Throwable)
+    --
+    Admin operation timed out
+}
+
+class InterruptException {
+    +InterruptException(message: String)
+    +InterruptException(cause: InterruptedException)
+    --
+    Thread was interrupted during operation
+}
+
+class UnsupportedVersionException {
+    +UnsupportedVersionException(message: String)
+    --
+    API version not supported by broker
+}
+
+class AuthenticationException {
+    +AuthenticationException(message: String)
+    --
+    Authentication failed
+}
+
+class AuthorizationException {
+    +AuthorizationException(message: String)
+    --
+    Not authorized to perform operation
+}
+
+class ClusterAuthorizationException {
+    +ClusterAuthorizationException(message: String)
+    --
+    Not authorized for cluster operations
+}
+
+class TopicAuthorizationException {
+    +TopicAuthorizationException(message: String)
+    +getUnauthorizedTopics(): Set<String>
+    --
+    Not authorized for topic operations
+}
+
+class GroupAuthorizationException {
+    +GroupAuthorizationException(message: String)
+    +getGroupId(): String
+    --
+    Not authorized for consumer group
+}
+
+class TransactionalIdAuthorizationException {
+    +TransactionalIdAuthorizationException(message: String)
+    --
+    Not authorized for transactional ID
+}
+
+' Topic management exceptions
+class TopicExistsException {
+    +TopicExistsException(message: String)
+    --
+    Topic already exists
+}
+
+class UnknownTopicOrPartitionException {
+    +UnknownTopicOrPartitionException(message: String)
+    --
+    Topic or partition does not exist
+}
+
+class InvalidTopicException {
+    +InvalidTopicException(message: String)
+    --
+    Topic name is invalid
+}
+
+class InvalidPartitionsException {
+    +InvalidPartitionsException(message: String)
+    --
+    Invalid partition count specified
+}
+
+class InvalidReplicationFactorException {
+    +InvalidReplicationFactorException(message: String)
+    --
+    Invalid replication factor specified
+}
+
+class InvalidConfigurationException {
+    +InvalidConfigurationException(message: String)
+    --
+    Configuration is invalid
+}
+
+class PolicyViolationException {
+    +PolicyViolationException(message: String)
+    --
+    Operation violates configured policy
+}
+
+' Cluster management exceptions
+class NotControllerException {
+    +NotControllerException(message: String)
+    --
+    Broker is not the cluster controller
+}
+
+class ControllerMovedException {
+    +ControllerMovedException(message: String)
+    --
+    Controller has moved to another broker
+}
+
+class BrokerNotAvailableException {
+    +BrokerNotAvailableException(message: String)
+    --
+    Broker is not available
+}
+
+class ReplicaNotAvailableException {
+    +ReplicaNotAvailableException(message: String)
+    --
+    Replica is not available
+}
+
+class LeaderNotAvailableException {
+    +LeaderNotAvailableException(message: String)
+    --
+    Partition leader not available
+}
+
+class NotLeaderForPartitionException {
+    +NotLeaderForPartitionException(message: String)
+    --
+    Broker is not leader for partition
+}
+
+class NetworkException {
+    +NetworkException(message: String)
+    +NetworkException(message: String, cause: Throwable)
+    --
+    Network I/O error
+}
+
+class InvalidMetadataException {
+    +InvalidMetadataException(message: String)
+    --
+    Metadata is invalid or stale
+}
+
+' Consumer group exceptions
+class GroupIdNotFoundException {
+    +GroupIdNotFoundException(message: String)
+    --
+    Consumer group does not exist
+}
+
+class GroupNotEmptyException {
+    +GroupNotEmptyException(message: String)
+    --
+    Consumer group is not empty
+}
+
+class CoordinatorNotAvailableException {
+    +CoordinatorNotAvailableException(message: String)
+    --
+    Group coordinator not available
+}
+
+class NotCoordinatorException {
+    +NotCoordinatorException(message: String)
+    --
+    Broker is not group coordinator
+}
+
+' ACL management exceptions
+class SecurityDisabledException {
+    +SecurityDisabledException(message: String)
+    --
+    Security features are disabled
+}
+
+class InvalidRequestException {
+    +InvalidRequestException(message: String)
+    --
+    Request is malformed or invalid
+}
+
+class DuplicateResourceException {
+    +DuplicateResourceException(message: String)
+    --
+    Resource already exists
+}
+
+class ResourceNotFoundException {
+    +ResourceNotFoundException(message: String)
+    --
+    Resource does not exist
+}
+
+' Configuration exceptions
+class ConfigException {
+    +ConfigException(message: String)
+    --
+    Configuration error
+}
+
+class UnknownConfigException {
+    +UnknownConfigException(message: String)
+    --
+    Configuration key is unknown
+}
+
+class InvalidConfigException {
+    +InvalidConfigException(message: String)
+    --
+    Configuration value is invalid
+}
+
+class SaslAuthenticationException {
+    +SaslAuthenticationException(message: String)
+    --
+    SASL authentication failed
+}
+
+class DisconnectException {
+    +DisconnectException(message: String)
+    --
+    Connection was disconnected
+}
+
+class CorruptRecordException {
+    +CorruptRecordException(message: String)
+    --
+    Record failed CRC check
+}
+
+class ThrottlingQuotaExceededException {
+    +ThrottlingQuotaExceededException(message: String)
+    +getThrottleTimeMs(): int
+    --
+    Request was throttled due to quota
+}
+
+class UnknownServerException {
+    +UnknownServerException(message: String)
+    --
+    Unknown server error occurred
+}
+
+' Inheritance relationships
+RuntimeException <|-- IllegalArgumentException
+RuntimeException <|-- KafkaException
+
+KafkaException <|-- ApiException
+KafkaException <|-- InterruptException
+KafkaException <|-- ConfigException
+
+ApiException <|-- RetriableException
+ApiException <|-- UnsupportedVersionException
+ApiException <|-- AuthenticationException
+ApiException <|-- AuthorizationException
+ApiException <|-- TopicExistsException
+ApiException <|-- InvalidTopicException
+ApiException <|-- InvalidPartitionsException
+ApiException <|-- InvalidReplicationFactorException
+ApiException <|-- InvalidConfigurationException
+ApiException <|-- PolicyViolationException
+ApiException <|-- GroupIdNotFoundException
+ApiException <|-- GroupNotEmptyException
+ApiException <|-- SecurityDisabledException
+ApiException <|-- InvalidRequestException
+ApiException <|-- DuplicateResourceException
+ApiException <|-- ResourceNotFoundException
+ApiException <|-- SaslAuthenticationException
+ApiException <|-- UnknownServerException
+
+RetriableException <|-- TimeoutException
+RetriableException <|-- UnknownTopicOrPartitionException
+RetriableException <|-- NotControllerException
+RetriableException <|-- ControllerMovedException
+RetriableException <|-- BrokerNotAvailableException
+RetriableException <|-- ReplicaNotAvailableException
+RetriableException <|-- LeaderNotAvailableException
+RetriableException <|-- NotLeaderForPartitionException
+RetriableException <|-- NetworkException
+RetriableException <|-- InvalidMetadataException
+RetriableException <|-- CoordinatorNotAvailableException
+RetriableException <|-- NotCoordinatorException
+RetriableException <|-- DisconnectException
+RetriableException <|-- CorruptRecordException
+RetriableException <|-- ThrottlingQuotaExceededException
+
+AuthorizationException <|-- ClusterAuthorizationException
+AuthorizationException <|-- TopicAuthorizationException
+AuthorizationException <|-- GroupAuthorizationException
+AuthorizationException <|-- TransactionalIdAuthorizationException
+
+AuthenticationException <|-- SaslAuthenticationException
+
+ConfigException <|-- UnknownConfigException
+ConfigException <|-- InvalidConfigException
+
+note right of RetriableException
+    These exceptions indicate transient
+    failures that may succeed if retried
+    with appropriate backoff strategy.
+end note
+
+note right of NotControllerException
+    Admin operations that require controller
+    access will fail if current broker
+    is not the controller.
+end note
+
+note right of PolicyViolationException
+    Thrown when operation violates
+    configured creation policies
+    (e.g., topic naming conventions).
+end note
+
+note right of ThrottlingQuotaExceededException
+    Contains throttle time information
+    to help clients implement proper
+    backoff strategies.
+end note
+
+note right of TopicAuthorizationException
+    Contains set of unauthorized topics
+    for more granular error handling
+    in batch operations.
+end note
+
+note right of GroupAuthorizationException
+    Contains the specific group ID
+    that caused authorization failure.
+end note
+
+@enduml
