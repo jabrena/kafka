@@ -1,0 +1,119 @@
+@startuml KafkaAdminSequence
+!theme plain
+skinparam backgroundColor white
+skinparam sequence {
+    ArrowColor darkblue
+    LifeLineBackgroundColor lightcyan
+    LifeLineBorderColor darkblue
+    ParticipantBackgroundColor lightyellow
+    ParticipantBorderColor darkorange
+}
+
+title Kafka Admin Client Operation Sequence - CreateTopics Example
+
+actor "Application" as App
+participant "KafkaAdminClient" as AdminClient
+participant "AdminClientRunnable" as IOThread
+participant "AdminMetadataManager" as MetadataManager
+participant "NetworkClient" as NetClient
+participant "CreateTopicsCall" as Call
+participant "Kafka Broker" as Broker
+
+App -> AdminClient : createTopics(topics, options)
+activate AdminClient
+
+AdminClient -> Call : new CreateTopicsCall(topics, options)
+activate Call
+
+AdminClient -> IOThread : enqueue(call)
+activate IOThread
+
+AdminClient -> App : return CreateTopicsResult
+deactivate AdminClient
+
+note right of App
+    Application gets Future immediately
+    and can continue processing while
+    operation executes asynchronously
+end note
+
+IOThread -> IOThread : processQueue()
+IOThread -> Call : handleRequests()
+
+Call -> Call : validateTopics()
+alt validation fails
+    Call -> IOThread : complete with error
+    IOThread -> App : notify failure via Future
+else validation succeeds
+    Call -> MetadataManager : needsMetadata()
+    activate MetadataManager
+    
+    alt metadata stale
+        MetadataManager -> NetClient : sendMetadataRequest()
+        activate NetClient
+        NetClient -> Broker : MetadataRequest
+        Broker -> NetClient : MetadataResponse
+        NetClient -> MetadataManager : processMetadataResponse()
+        deactivate NetClient
+        MetadataManager -> MetadataManager : updateMetadata()
+    end
+    
+    MetadataManager -> Call : metadata ready
+    deactivate MetadataManager
+    
+    Call -> Call : selectController()
+    Call -> NetClient : sendCreateTopicsRequest(controller)
+    activate NetClient
+    
+    NetClient -> NetClient : ensureConnection(controller)
+    alt connection needed
+        NetClient -> Broker : establish connection
+        Broker -> NetClient : connection established
+    end
+    
+    NetClient -> Broker : CreateTopicsRequest
+    note right of Broker
+        Broker processes request:
+        - Validates topic configurations
+        - Creates topic partitions
+        - Updates cluster metadata
+    end note
+    
+    Broker -> NetClient : CreateTopicsResponse
+    NetClient -> IOThread : handleResponse()
+    deactivate NetClient
+    
+    IOThread -> Call : handleResponse(response)
+    Call -> Call : processCreateTopicsResponse()
+    
+    alt operation successful
+        Call -> IOThread : complete with success
+        IOThread -> App : notify success via Future
+    else operation failed
+        Call -> Call : analyzeError()
+        alt retriable error
+            Call -> Call : scheduleRetry()
+            note right of Call
+                Retry with exponential backoff
+                up to configured max retries
+            end note
+        else non-retriable error
+            Call -> IOThread : complete with error
+            IOThread -> App : notify failure via Future
+        end
+    end
+end
+
+deactivate Call
+deactivate IOThread
+
+note over App, Broker
+    Key Features:
+    • Asynchronous operation with immediate Future return
+    • Automatic metadata refresh when needed
+    • Controller discovery and connection management
+    • Comprehensive error handling with retry logic
+    • Thread-safe coordination between main and I/O threads
+end note
+
+@enduml

@@ -1,0 +1,250 @@
+@startuml KafkaAdminClientStateMachine
+!theme plain
+skinparam backgroundColor white
+skinparam state {
+    BackgroundColor lightcyan
+    BorderColor darkblue
+    ArrowColor darkblue
+    FontSize 9
+}
+
+title Kafka Admin Client Internal State Machine - Detailed View
+
+state "Admin Client Lifecycle" as AdminClientLifecycle {
+    [*] --> Created
+    
+    state Created {
+        [*] --> Instantiated
+        Instantiated --> Configured : configure()
+    }
+    
+    Configured --> Initializing : start()
+    
+    state Initializing {
+        [*] --> LoadingConfiguration
+        LoadingConfiguration --> ValidatingConfiguration
+        ValidatingConfiguration --> StartingIOThread
+        StartingIOThread --> InitializingNetworkClient
+        InitializingNetworkClient --> InitializingMetadata
+        InitializingMetadata --> Running
+    }
+    
+    state Running {
+        [*] --> Ready
+        Ready --> OperationProcessing : API call
+        
+        state OperationProcessing {
+            [*] --> CreatingCall
+            CreatingCall --> QueueingCall
+            QueueingCall --> CallQueued
+            
+            state CallQueued {
+                [*] --> WaitingIOThread
+                WaitingIOThread --> CallProcessing : I/O thread pickup
+            }
+            
+            state CallProcessing {
+                [*] --> PreparingRequest
+                PreparingRequest --> ValidatingRequest
+                ValidatingRequest --> ValidationFailed : invalid params
+                ValidatingRequest --> BuildingRequest : params valid
+                ValidationFailed --> CallFailed
+                BuildingRequest --> RequestReady
+                
+                RequestReady --> SendingRequest
+                
+                state SendingRequest {
+                    [*] --> SelectingBroker
+                    SelectingBroker --> BrokerNotAvailable : no broker
+                    SelectingBroker --> BrokerSelected : broker found
+                    BrokerNotAvailable --> MetadataRefresh
+                    BrokerSelected --> EstablishingConnection
+                    
+                    state EstablishingConnection {
+                        [*] --> CheckingExistingConnection
+                        CheckingExistingConnection --> ConnectionAvailable : connection exists
+                        CheckingExistingConnection --> ConnectingToBroker : need new connection
+                        ConnectingToBroker --> ConnectionEstablished : success
+                        ConnectingToBroker --> ConnectionFailed : failure
+                        ConnectionFailed --> ConnectionRetry : retriable
+                        ConnectionFailed --> CallFailed : non-retriable
+                        ConnectionRetry --> ConnectingToBroker : retry attempt
+                        ConnectionAvailable --> TransmittingRequest
+                    }
+                    
+                    ConnectionEstablished --> TransmittingRequest
+                    TransmittingRequest --> RequestSent : transmission complete
+                    TransmittingRequest --> TransmissionFailed : network error
+                    TransmissionFailed --> ConnectionRetry : retriable
+                    TransmissionFailed --> CallFailed : non-retriable
+                }
+                
+                RequestSent --> WaitingResponse
+                
+                state WaitingResponse {
+                    [*] --> PendingResponse
+                    PendingResponse --> ResponseReceived : response arrives
+                    PendingResponse --> RequestTimeout : timeout exceeded
+                    RequestTimeout --> TimeoutHandling
+                    
+                    state TimeoutHandling {
+                        [*] --> CheckingRetryPolicy
+                        CheckingRetryPolicy --> RetryAttempt : retries available
+                        CheckingRetryPolicy --> CallTimedOut : max retries exceeded
+                        RetryAttempt --> CalculatingBackoff
+                        CalculatingBackoff --> WaitingBackoff
+                        WaitingBackoff --> PreparingRequest : backoff complete
+                    }
+                }
+                
+                ResponseReceived --> ProcessingResponse
+                
+                state ProcessingResponse {
+                    [*] --> ParsingResponse
+                    ParsingResponse --> ValidatingResponse
+                    ValidatingResponse --> ResponseValid : validation success
+                    ValidatingResponse --> ResponseInvalid : validation failed
+                    ResponseInvalid --> ErrorAnalysis
+                    
+                    state ErrorAnalysis {
+                        [*] --> CategorizingError
+                        CategorizingError --> RetriableError : can retry
+                        CategorizingError --> NonRetriableError : permanent failure
+                        RetriableError --> RetryAttempt
+                        NonRetriableError --> CallFailed
+                    }
+                    
+                    ResponseValid --> ExtractingResult
+                    ExtractingResult --> CallCompleted : success
+                    ExtractingResult --> CallFailed : extraction error
+                }
+            }
+            
+            CallCompleted --> OperationSuccess
+            CallFailed --> OperationFailure
+            CallTimedOut --> OperationTimeout
+        }
+        
+        OperationSuccess --> Ready : continue processing
+        OperationFailure --> Ready : continue processing
+        OperationTimeout --> Ready : continue processing
+        
+        Ready --> MetadataManagement
+        
+        state MetadataManagement {
+            [*] --> CheckingMetadata
+            CheckingMetadata --> MetadataValid : metadata current
+            CheckingMetadata --> MetadataStale : metadata outdated
+            MetadataValid --> Ready
+            MetadataStale --> MetadataRefresh
+            
+            state MetadataRefresh {
+                [*] --> RequestingMetadata
+                RequestingMetadata --> MetadataRequestSent
+                MetadataRequestSent --> MetadataResponseReceived : response
+                MetadataRequestSent --> MetadataRequestFailed : failure
+                MetadataResponseReceived --> UpdatingMetadata
+                UpdatingMetadata --> MetadataUpdated : update complete
+                MetadataRequestFailed --> MetadataRetry : retriable
+                MetadataRequestFailed --> MetadataFailed : non-retriable
+                MetadataRetry --> RequestingMetadata : retry attempt
+                MetadataUpdated --> ControllerDiscovery
+                
+                state ControllerDiscovery {
+                    [*] --> FindingController
+                    FindingController --> ControllerFound : controller identified
+                    FindingController --> ControllerNotFound : no controller
+                    ControllerFound --> ValidatingController
+                    ValidatingController --> ControllerConnected : connection success
+                    ValidatingController --> ControllerConnectionFailed : connection failed
+                    ControllerNotFound --> ControllerSearch : continue search
+                    ControllerConnectionFailed --> ControllerSearch : find alternate
+                    ControllerSearch --> FindingController : search attempt
+                }
+                
+                ControllerConnected --> Ready
+                MetadataFailed --> Ready : continue with stale metadata
+            }
+        }
+        
+        Ready --> ConnectionManagement
+        
+        state ConnectionManagement {
+            [*] --> MonitoringConnections
+            MonitoringConnections --> ConnectionHealthy : all connections good
+            MonitoringConnections --> ConnectionIssues : connection problems
+            ConnectionHealthy --> Ready
+            ConnectionIssues --> ReconnectionAttempt
+            
+            state ReconnectionAttempt {
+                [*] --> IdentifyingFailedConnections
+                IdentifyingFailedConnections --> ReconnectingToBrokers
+                ReconnectingToBrokers --> ReconnectionSuccessful : success
+                ReconnectingToBrokers --> ReconnectionFailed : failure
+                ReconnectionSuccessful --> Ready
+                ReconnectionFailed --> ReconnectionBackoff
+                ReconnectionBackoff --> ReconnectingToBrokers : retry
+            }
+        }
+    }
+    
+    Running --> Closing : close() called
+    
+    state Closing {
+        [*] --> InitiatingShutdown
+        InitiatingShutdown --> StoppingNewOperations
+        StoppingNewOperations --> DrainPendingOperations
+        DrainPendingOperations --> WaitingOperationCompletion
+        WaitingOperationCompletion --> OperationsCompleted : all done
+        WaitingOperationCompletion --> ForceShutdown : timeout
+        OperationsCompleted --> ClosingConnections
+        ForceShutdown --> CancellingOperations
+        CancellingOperations --> ClosingConnections
+        ClosingConnections --> StoppingIOThread
+        StoppingIOThread --> ReleasingResources
+        ReleasingResources --> Closed
+    }
+    
+    Closed --> [*]
+}
+
+note right of OperationProcessing
+    Each admin operation follows this
+    detailed lifecycle: CreateTopics,
+    DeleteTopics, AlterConfigs, etc.
+    Full error handling and retry logic.
+end note
+
+note right of SendingRequest
+    Request sending involves:
+    - Broker selection based on operation
+    - Connection establishment/reuse
+    - Network transmission with retries
+    - Correlation ID tracking
+end note
+
+note right of MetadataRefresh
+    Metadata management includes:
+    - Periodic refresh intervals
+    - Event-driven updates
+    - Controller discovery and tracking
+    - Broker topology changes
+end note
+
+note right of ConnectionManagement
+    Connection management handles:
+    - Connection health monitoring
+    - Automatic reconnection
+    - Connection pooling
+    - Resource cleanup
+end note
+
+note right of Closing
+    Graceful shutdown process:
+    - Stop accepting new operations
+    - Drain pending operations
+    - Close network connections
+    - Release all resources
+end note
+
+@enduml

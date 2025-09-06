@@ -1,0 +1,166 @@
+@startuml KafkaAdminComponents
+!theme plain
+skinparam backgroundColor white
+skinparam component {
+    BackgroundColor lightyellow
+    BorderColor darkorange
+    ArrowColor darkorange
+}
+
+title Kafka Admin Client Internal Component Architecture
+
+package "Admin Client API" {
+    interface [AdminClient] as AdminClientInterface
+    component [KafkaAdminClient] as AdminClient
+    
+    AdminClientInterface <|-- AdminClient
+}
+
+package "Configuration Layer" {
+    component [AdminClientConfig] as Config
+    component [AdminClientUtils] as Utils
+    
+    AdminClient --> Config : uses configuration
+    AdminClient --> Utils : utility functions
+}
+
+package "I/O Processing Layer" {
+    component [AdminClientRunnable] as IOThread
+    component [NetworkClient] as NetClient
+    component [AdminMetadataManager] as MetadataManager
+    
+    AdminClient --> IOThread : delegates I/O operations
+    IOThread --> NetClient : network communication
+    IOThread --> MetadataManager : metadata operations
+}
+
+package "Request Processing" {
+    abstract [Call] as AbstractCall
+    component [CallInFlight] as InFlightCall
+    component [AdminClientContext] as Context
+    
+    IOThread --> AbstractCall : processes calls
+    IOThread --> InFlightCall : tracks requests
+    AbstractCall --> Context : execution context
+}
+
+package "Operation Implementations" {
+    component [CreateTopicsCall] as CreateTopics
+    component [DeleteTopicsCall] as DeleteTopics
+    component [ListTopicsCall] as ListTopics
+    component [DescribeTopicsCall] as DescribeTopics
+    component [AlterConfigsCall] as AlterConfigs
+    component [DescribeConfigsCall] as DescribeConfigs
+    component [ListConsumerGroupsCall] as ListGroups
+    component [DescribeConsumerGroupsCall] as DescribeGroups
+    component [DeleteConsumerGroupsCall] as DeleteGroups
+    component [CreateAclsCall] as CreateAcls
+    component [DeleteAclsCall] as DeleteAcls
+    component [DescribeAclsCall] as DescribeAcls
+    
+    AbstractCall <|-- CreateTopics
+    AbstractCall <|-- DeleteTopics
+    AbstractCall <|-- ListTopics
+    AbstractCall <|-- DescribeTopics
+    AbstractCall <|-- AlterConfigs
+    AbstractCall <|-- DescribeConfigs
+    AbstractCall <|-- ListGroups
+    AbstractCall <|-- DescribeGroups
+    AbstractCall <|-- DeleteGroups
+    AbstractCall <|-- CreateAcls
+    AbstractCall <|-- DeleteAcls
+    AbstractCall <|-- DescribeAcls
+}
+
+package "Network Layer" {
+    component [Selector] as Selector
+    component [KafkaChannel] as Channel
+    component [Send] as SendRequest
+    component [NetworkReceive] as ReceiveResponse
+    
+    NetClient --> Selector : I/O multiplexing
+    Selector --> Channel : connection management
+    Channel --> SendRequest : outbound requests
+    Channel --> ReceiveResponse : inbound responses
+}
+
+package "Protocol Layer" {
+    component [RequestHeader] as ReqHeader
+    component [ResponseHeader] as RespHeader
+    component [AbstractRequest] as AbstractReq
+    component [AbstractResponse] as AbstractResp
+    
+    SendRequest --> ReqHeader : request headers
+    SendRequest --> AbstractReq : request body
+    ReceiveResponse --> RespHeader : response headers
+    ReceiveResponse --> AbstractResp : response body
+}
+
+package "External Dependencies" {
+    interface [Serializer] as Serializer
+    interface [Deserializer] as Deserializer
+    interface [Metrics] as Metrics
+    interface [Time] as Time
+}
+
+' Main component relationships
+AdminClient --> IOThread : submits operations
+AdminClient --> Config : configuration access
+IOThread --> NetClient : network operations
+IOThread --> MetadataManager : metadata management
+IOThread --> InFlightCall : request tracking
+
+' Network relationships
+NetClient --> Selector : non-blocking I/O
+NetClient --> Metrics : performance metrics
+NetClient --> Time : timing operations
+
+' Protocol relationships
+AbstractCall --> AbstractReq : builds requests
+AbstractCall --> AbstractResp : processes responses
+AbstractCall --> Serializer : data serialization
+AbstractCall --> Deserializer : data deserialization
+
+note right of AdminClient
+    Main entry point that provides
+    thread-safe access to all admin
+    operations. Delegates actual work
+    to background I/O thread.
+end note
+
+note right of IOThread
+    Background thread (AdminClientRunnable)
+    that processes all network I/O,
+    manages connections, and handles
+    request/response lifecycle.
+end note
+
+note right of AbstractCall
+    Base class for all admin operations.
+    Each operation type (CreateTopics,
+    DeleteTopics, etc.) extends this
+    with specific logic.
+end note
+
+note right of MetadataManager
+    Manages cluster metadata including
+    broker discovery, controller
+    identification, and topology
+    updates.
+end note
+
+note right of NetClient
+    Low-level network client that
+    handles connection management,
+    request sending, and response
+    receiving using NIO.
+end note
+
+note right of InFlightCall
+    Tracks in-flight requests using
+    correlation IDs, manages timeouts,
+    and routes responses back to
+    the correct Call objects.
+end note
+
+@enduml
