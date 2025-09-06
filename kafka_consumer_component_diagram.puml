@@ -1,0 +1,106 @@
+@startuml KafkaConsumerComponents
+!theme plain
+skinparam backgroundColor white
+skinparam component {
+    BackgroundColor lightgreen
+    BorderColor darkgreen
+    ArrowColor darkgreen
+}
+
+title Kafka Consumer Internal Component Architecture
+
+package "KafkaConsumer API" {
+    component [KafkaConsumer] as Consumer
+}
+
+package "Coordination Layer" {
+    component [ConsumerCoordinator] as Coordinator
+    component [AbstractCoordinator] as AbstractCoord
+    component [ConsumerRebalanceListener] as RebalanceListener
+    
+    Coordinator --> AbstractCoord : extends
+    Coordinator --> RebalanceListener : uses
+}
+
+package "Fetching Layer" {
+    component [Fetcher] as Fetcher
+    component [SubscriptionState] as SubState
+    component [ConsumerMetadata] as Metadata
+    
+    Fetcher --> SubState : uses
+    Fetcher --> Metadata : uses
+}
+
+package "Network Layer" {
+    component [ConsumerNetworkClient] as NetClient
+    component [NetworkClient] as BaseNetClient
+    
+    NetClient --> BaseNetClient : extends
+}
+
+package "Offset Management" {
+    component [OffsetCommitCallback] as CommitCallback
+    component [OffsetFetcher] as OffsetFetcher
+}
+
+package "External Interfaces" {
+    interface "Deserializer" as Deserializer
+    interface "PartitionAssignor" as Assignor
+    interface "ConsumerInterceptor" as Interceptor
+}
+
+' Main component relationships
+Consumer --> Coordinator : manages group membership
+Consumer --> Fetcher : fetches records
+Consumer --> SubState : tracks subscription
+Consumer --> NetClient : network operations
+Consumer --> OffsetFetcher : offset operations
+
+' Coordinator relationships
+Coordinator --> NetClient : group protocol requests
+Coordinator --> Assignor : partition assignment
+Coordinator --> SubState : assignment updates
+
+' Fetcher relationships
+Fetcher --> NetClient : fetch requests
+Fetcher --> Deserializer : record deserialization
+Fetcher --> OffsetFetcher : position management
+
+' Network client relationships
+NetClient --> Metadata : metadata requests
+
+' Callback relationships
+Consumer --> CommitCallback : async offset commits
+Consumer --> Interceptor : record interception
+
+note right of Consumer
+    Main consumer API that coordinates
+    all internal components. Not thread-safe,
+    all operations must be from single thread.
+end note
+
+note right of Coordinator
+    Manages consumer group membership,
+    handles rebalancing, and maintains
+    session through heartbeats.
+end note
+
+note right of Fetcher
+    Core fetching logic that builds requests,
+    processes responses, and extracts records.
+    Handles fetch positions and retry logic.
+end note
+
+note right of SubState
+    Tracks current subscription state including
+    assigned partitions, fetch positions,
+    and committed offsets.
+end note
+
+note right of NetClient
+    Handles all network communication with
+    brokers including connection management,
+    request/response processing.
+end note
+
+@enduml

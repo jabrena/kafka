@@ -1,0 +1,223 @@
+@startuml KafkaConsumerStateMachine
+!theme plain
+skinparam backgroundColor white
+skinparam state {
+    BackgroundColor lightblue
+    BorderColor black
+    ArrowColor black
+    FontSize 10
+}
+
+title Kafka Consumer Internal State Machine - Detailed View
+
+state "Consumer Lifecycle" as ConsumerLifecycle {
+    [*] --> Unsubscribed
+    
+    state Unsubscribed {
+        [*] --> Created
+        Created --> Configured : configure()
+    }
+    
+    Configured --> Subscribed : subscribe()
+    
+    state Subscribed {
+        [*] --> AwaitingAssignment
+        AwaitingAssignment --> JoiningGroup : poll() called
+        
+        state JoiningGroup {
+            [*] --> DiscoveringCoordinator
+            DiscoveringCoordinator --> CoordinatorFound : coordinator discovered
+            DiscoveringCoordinator --> CoordinatorDiscoveryFailed : discovery failed
+            CoordinatorDiscoveryFailed --> DiscoveringCoordinator : retry after backoff
+            CoordinatorFound --> SendingJoinRequest
+            SendingJoinRequest --> WaitingJoinResponse
+            WaitingJoinResponse --> JoinSuccessful : join accepted
+            WaitingJoinResponse --> JoinFailed : join rejected/timeout
+            WaitingJoinResponse --> RebalanceInProgress : rebalance needed
+            JoinFailed --> SendingJoinRequest : retry
+            RebalanceInProgress --> SendingJoinRequest : rejoin
+        }
+        
+        JoinSuccessful --> SyncingGroup
+        
+        state SyncingGroup {
+            [*] --> SendingSyncRequest
+            SendingSyncRequest --> WaitingSyncResponse
+            WaitingSyncResponse --> SyncSuccessful : assignment received
+            WaitingSyncResponse --> SyncFailed : sync failed
+            SyncFailed --> SendingSyncRequest : retry
+        }
+        
+        SyncSuccessful --> Stable
+    }
+    
+    state Stable {
+        [*] --> PartitionsAssigned
+        PartitionsAssigned --> ActiveConsumption : partitions assigned
+        
+        state ActiveConsumption {
+            [*] --> Fetching
+            
+            state Fetching {
+                [*] --> CheckingFetchPositions
+                CheckingFetchPositions --> UpdatingPositions : positions unknown
+                CheckingFetchPositions --> SendingFetchRequests : positions known
+                UpdatingPositions --> SendingFetchRequests : positions updated
+                
+                state SendingFetchRequests {
+                    [*] --> BuildingFetchRequests
+                    BuildingFetchRequests --> SendingToNetwork
+                    SendingToNetwork --> WaitingFetchResponse
+                    WaitingFetchResponse --> FetchSuccessful : records received
+                    WaitingFetchResponse --> FetchFailed : network error
+                    WaitingFetchResponse --> FetchTimeout : timeout
+                    FetchFailed --> BuildingFetchRequests : retry
+                    FetchTimeout --> BuildingFetchRequests : retry
+                }
+                
+                FetchSuccessful --> ProcessingRecords
+            }
+            
+            state ProcessingRecords {
+                [*] --> DeserializingRecords
+                DeserializingRecords --> DeserializationFailed : deserialization error
+                DeserializingRecords --> RecordsReady : deserialization successful
+                DeserializationFailed --> ErrorHandling
+                RecordsReady --> ReturningToApplication
+            }
+            
+            ReturningToApplication --> OffsetManagement : records consumed
+            
+            state OffsetManagement {
+                [*] --> UpdatingPositions
+                UpdatingPositions --> CommittingOffsets : auto-commit enabled
+                UpdatingPositions --> WaitingNextPoll : manual commit
+                
+                state CommittingOffsets {
+                    [*] --> SyncCommit : commitSync() called
+                    [*] --> AsyncCommit : commitAsync() called
+                    [*] --> AutoCommit : auto-commit triggered
+                    
+                    SyncCommit --> CommitInProgress
+                    AsyncCommit --> CommitInProgress  
+                    AutoCommit --> CommitInProgress
+                    
+                    CommitInProgress --> CommitSuccessful : commit acknowledged
+                    CommitInProgress --> CommitFailed : commit failed
+                    CommitFailed --> CommitRetry : retriable error
+                    CommitFailed --> CommitAbandoned : non-retriable error
+                    CommitRetry --> CommitInProgress : retry attempt
+                    CommitSuccessful --> WaitingNextPoll
+                    CommitAbandoned --> ErrorHandling
+                }
+            }
+            
+            WaitingNextPoll --> Fetching : poll() called again
+            
+            state ErrorHandling {
+                [*] --> AnalyzingError
+                AnalyzingError --> RetriableError : can retry
+                AnalyzingError --> NonRetriableError : cannot retry
+                RetriableError --> CalculatingBackoff
+                CalculatingBackoff --> WaitingBackoff
+                WaitingBackoff --> Fetching : backoff complete
+                NonRetriableError --> PropagatingError
+                PropagatingError --> [*] : error thrown to application
+            }
+        }
+        
+        ActiveConsumption --> Rebalancing : rebalance triggered
+        ActiveConsumption --> Seeking : seek() called
+        
+        state Seeking {
+            [*] --> ValidatingSeekPositions
+            ValidatingSeekPositions --> UpdatingPositions : positions valid
+            ValidatingSeekPositions --> SeekError : positions invalid
+            UpdatingPositions --> ActiveConsumption : positions updated
+            SeekError --> ErrorHandling : invalid seek
+        }
+        
+        state Rebalancing {
+            [*] --> RevokingPartitions
+            RevokingPartitions --> CallingOnPartitionsRevoked
+            CallingOnPartitionsRevoked --> JoiningGroup : callback complete
+        }
+    }
+    
+    Stable --> Heartbeating
+    
+    state Heartbeating {
+        [*] --> SendingHeartbeat
+        SendingHeartbeat --> HeartbeatSuccessful : heartbeat acknowledged
+        SendingHeartbeat --> HeartbeatFailed : heartbeat failed
+        HeartbeatSuccessful --> WaitingHeartbeatInterval
+        WaitingHeartbeatInterval --> SendingHeartbeat : interval elapsed
+        HeartbeatFailed --> SessionExpired : coordinator unreachable
+        SessionExpired --> JoiningGroup : rejoin group
+    }
+    
+    Stable --> Closing : close() called
+    Subscribed --> Closing : close() called
+    Unsubscribed --> Closing : close() called
+    
+    state Closing {
+        [*] --> CommittingFinalOffsets
+        CommittingFinalOffsets --> LeavingGroup : offsets committed
+        LeavingGroup --> ClosingConnections : leave request sent
+        ClosingConnections --> ReleasingResources : connections closed
+        ReleasingResources --> Closed : cleanup complete
+    }
+    
+    Closed --> [*]
+}
+
+note right of JoiningGroup
+    Consumer discovers group coordinator
+    and attempts to join consumer group.
+    Handles coordinator failures and
+    rebalance events during join process.
+end note
+
+note right of SyncingGroup
+    Consumer synchronizes with group
+    to receive partition assignments
+    from the group leader. Assignment
+    strategy determines partitions.
+end note
+
+note right of Fetching
+    Consumer builds fetch requests for
+    assigned partitions, sends to
+    partition leaders, and processes
+    responses containing records.
+end note
+
+note right of OffsetManagement
+    Handles both automatic and manual
+    offset commits. Auto-commit occurs
+    at configured intervals. Manual
+    commits can be sync or async.
+end note
+
+note right of Rebalancing
+    Triggered by group membership changes,
+    partition count changes, or coordinator
+    initiated rebalancing. Revokes current
+    partitions before reassignment.
+end note
+
+note right of Heartbeating
+    Maintains session with group coordinator
+    through periodic heartbeats. Session
+    timeout detection triggers rebalancing
+    and potential consumer eviction.
+end note
+
+note right of ErrorHandling
+    Categorizes errors as retriable or
+    non-retriable. Implements exponential
+    backoff for retriable errors.
+    Non-retriable errors propagate to app.
+end note
+
+@enduml
