@@ -1,0 +1,134 @@
+@startuml KafkaProducerStateMachine
+!define RECTANGLE class
+!theme plain
+skinparam backgroundColor white
+skinparam state {
+    BackgroundColor lightblue
+    BorderColor black
+    ArrowColor black
+}
+
+title Kafka Producer Internal State Machine
+
+state "Producer Lifecycle" as ProducerLifecycle {
+    [*] --> Initializing
+    
+    state Initializing {
+        [*] --> LoadingConfig
+        LoadingConfig --> ValidatingConfig
+        ValidatingConfig --> InitializingComponents
+        InitializingComponents --> StartingSenderThread
+        StartingSenderThread --> Ready
+    }
+    
+    Ready --> Processing : send() called
+    
+    state Processing {
+        [*] --> Serializing
+        
+        state Serializing {
+            [*] --> SerializingKey
+            SerializingKey --> SerializingValue
+            SerializingValue --> SerializationComplete
+        }
+        
+        SerializationComplete --> Partitioning
+        
+        state Partitioning {
+            [*] --> CheckingPartitionOverride
+            CheckingPartitionOverride --> CalculatingPartition : no override
+            CheckingPartitionOverride --> UsingProvidedPartition : partition specified
+            CalculatingPartition --> PartitionDetermined
+            UsingProvidedPartition --> PartitionDetermined
+        }
+        
+        PartitionDetermined --> Accumulating
+        
+        state Accumulating {
+            [*] --> CheckingBufferSpace
+            CheckingBufferSpace --> WaitingForSpace : buffer full
+            CheckingBufferSpace --> AddingToBuffer : space available
+            WaitingForSpace --> AddingToBuffer : space freed
+            AddingToBuffer --> CheckingBatchReady
+            CheckingBatchReady --> BatchReady : batch size/linger time reached
+            CheckingBatchReady --> WaitingInBuffer : batch not ready
+            WaitingInBuffer --> BatchReady : timeout or size threshold
+        }
+        
+        BatchReady --> Sending
+    }
+    
+    state Sending {
+        [*] --> PreparingSend
+        PreparingSend --> SendingToNetwork
+        
+        state SendingToNetwork {
+            [*] --> EstablishingConnection
+            EstablishingConnection --> ConnectionFailed : network error
+            EstablishingConnection --> ConnectionEstablished : success
+            ConnectionEstablished --> TransmittingData
+            TransmittingData --> WaitingForAcknowledgment
+        }
+        
+        WaitingForAcknowledgment --> AcknowledgmentReceived : success
+        WaitingForAcknowledgment --> NetworkTimeout : timeout
+        WaitingForAcknowledgment --> NetworkError : error response
+        
+        ConnectionFailed --> RetryLogic
+        NetworkTimeout --> RetryLogic
+        NetworkError --> RetryLogic
+        
+        state RetryLogic {
+            [*] --> CheckingRetryCount
+            CheckingRetryCount --> CalculatingBackoff : retries available
+            CheckingRetryCount --> PermanentFailure : max retries exceeded
+            CalculatingBackoff --> WaitingForRetry
+            WaitingForRetry --> PreparingSend : backoff complete
+        }
+        
+        AcknowledgmentReceived --> Success
+        PermanentFailure --> Failed
+    }
+    
+    Success --> Ready : continue processing
+    Failed --> Ready : continue processing (callback notified)
+    
+    Ready --> Closing : close() called
+    
+    state Closing {
+        [*] --> FlushingPendingRecords
+        FlushingPendingRecords --> StoppingSenderThread
+        StoppingSenderThread --> ClosingConnections
+        ClosingConnections --> ReleasingResources
+        ReleasingResources --> Closed
+    }
+    
+    Closed --> [*]
+}
+
+note right of Serializing
+    Key and Value serialization
+    happens in parallel where
+    possible for performance
+end note
+
+note right of Accumulating
+    RecordAccumulator manages
+    batching per partition with
+    configurable batch size
+    and linger time
+end note
+
+note right of SendingToNetwork
+    Sender thread handles
+    multiple batches concurrently
+    with flow control
+end note
+
+note right of RetryLogic
+    Exponential backoff with
+    jitter to avoid thundering
+    herd problems
+end note
+
+@enduml

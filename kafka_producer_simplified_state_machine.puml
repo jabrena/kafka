@@ -1,0 +1,74 @@
+@startuml KafkaProducerSimplified
+!theme plain
+skinparam backgroundColor white
+skinparam state {
+    BackgroundColor lightgreen
+    BorderColor darkgreen
+    ArrowColor darkgreen
+}
+
+title Simplified Kafka Producer State Machine
+
+[*] --> Initialized
+
+Initialized --> Serializing : send() called
+
+Serializing --> Partitioning : key/value serialized
+note right of Serializing
+    Convert key and value 
+    objects to byte arrays
+end note
+
+Partitioning --> Accumulating : partition determined
+note right of Partitioning
+    DefaultPartitioner uses key hash
+    or round-robin if key is null
+end note
+
+Accumulating --> Batching : record added to buffer
+note right of Accumulating
+    RecordAccumulator buffers
+    records per partition
+end note
+
+Batching --> Sending : batch ready (size/time threshold)
+note right of Batching
+    Configurable batch.size
+    and linger.ms parameters
+end note
+
+state Sending {
+    [*] --> NetworkSend
+    NetworkSend --> Acknowledged : success
+    NetworkSend --> RetryableError : retriable failure
+    NetworkSend --> NonRetryableError : permanent failure
+    
+    RetryableError --> BackoffWait : retries available
+    RetryableError --> Failed : max retries exceeded
+    BackoffWait --> NetworkSend : backoff complete
+}
+
+Acknowledged --> Success
+NonRetryableError --> Failed
+Failed --> [*] : callback notified
+Success --> Initialized : ready for next message
+
+Initialized --> Closing : close() called
+
+state Closing {
+    [*] --> FlushPending
+    FlushPending --> StopSender
+    StopSender --> CloseConnections  
+    CloseConnections --> [*]
+}
+
+note bottom
+    Key Features:
+    • Asynchronous processing with callbacks
+    • Configurable batching and compression
+    • Automatic retries with exponential backoff
+    • Memory-bounded buffering
+    • Thread-safe operation
+end note
+
+@enduml
