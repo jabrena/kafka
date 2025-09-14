@@ -1,0 +1,94 @@
+@startuml
+!theme plain
+title Kafka Consumer Client State Machine
+
+[*] --> Created : new KafkaConsumer()
+
+Created --> Subscribed : subscribe(topics) / join consumer group
+Created --> Assigned : assign(partitions) / manual assignment
+Created --> Closed : close() / cleanup resources
+
+Subscribed --> JoiningGroup : first poll() / initiate group join
+Assigned --> Polling : poll() / start fetching
+
+JoiningGroup --> Rebalancing : group coordinator response / partition assignment
+JoiningGroup --> JoinFailed : join timeout/coordinator unavailable
+JoiningGroup --> Closed : close() during join
+
+JoinFailed --> JoiningGroup : retry() [retry < maxRetries] / backoff delay
+JoinFailed --> Closed : [retry >= maxRetries] / give up
+
+Rebalancing --> Polling : rebalance complete / partitions assigned
+Rebalancing --> RebalanceFailed : rebalance timeout/error
+Rebalancing --> Closed : close() during rebalance
+
+RebalanceFailed --> Rebalancing : retry rebalance / coordinator retry
+RebalanceFailed --> Closed : fatal rebalance error / leave group
+
+Polling --> Fetching : poll(timeout) / fetch records from brokers
+Polling --> Paused : pause(partitions) / suspend fetching
+Polling --> Closed : close() / leave group and cleanup
+
+Paused --> Polling : resume(partitions) / resume fetching
+Paused --> Closed : close() / cleanup
+
+Fetching --> Processing : records received / return to application
+Fetching --> FetchTimeout : poll timeout / no records available
+Fetching --> FetchError : fetch error/broker unavailable
+Fetching --> Rebalancing : rebalance triggered / partition reassignment
+
+FetchTimeout --> Polling : continue polling / heartbeat maintained
+FetchTimeout --> Closed : close() / shutdown
+
+FetchError --> Polling : [recoverable error] / retry fetch
+FetchError --> Closed : [fatal error] / shutdown consumer
+
+Processing --> Committing : commitSync()/commitAsync() / offset commit
+Processing --> Polling : next poll() / continue consumption
+Processing --> Seeking : seek(partition, offset) / reset position
+Processing --> Closed : close() / shutdown
+
+Committing --> CommitSuccess : commit acknowledged / offsets stored
+Committing --> CommitFailed : commit error/coordinator unavailable
+
+CommitSuccess --> Polling : continue consumption
+CommitSuccess --> Closed : close() / shutdown
+
+CommitFailed --> Committing : retry commit [retriable error]
+CommitFailed --> Polling : [non-retriable error] / continue without commit
+CommitFailed --> Closed : close() / shutdown
+
+Seeking --> Polling : seek complete / new position set
+Seeking --> Closed : close() / shutdown
+
+Closed --> [*] : resources released
+
+note right of JoiningGroup : Consumer group protocol\nHeartbeat thread started\nCoordinator discovery
+note right of Rebalancing : Partition assignment\nRevoke/assign callbacks\nOffset reset strategy
+note right of Fetching : Fetch from assigned partitions\nDeserialize records\nHandle fetch errors
+note right of Processing : Application logic\nRecord processing\nError handling
+note right of Committing : Offset management\nAt-least-once/at-most-once\nCommit strategies
+
+state Polling {
+  [*] --> Heartbeating
+  Heartbeating --> SessionTimeout : session.timeout.ms exceeded
+  SessionTimeout --> [*] : trigger rebalance
+  Heartbeating --> [*] : normal operation
+}
+
+state Processing {
+  [*] --> Deserializing
+  Deserializing --> ApplicationLogic : records deserialized
+  ApplicationLogic --> [*] : processing complete
+  Deserializing --> DeserializationError : deserialization failed
+  DeserializationError --> [*] : error handled
+}
+
+state Rebalancing {
+  [*] --> PartitionRevocation
+  PartitionRevocation --> PartitionAssignment : revoke complete
+  PartitionAssignment --> OffsetReset : assignment complete
+  OffsetReset --> [*] : positions determined
+}
+
+@enduml
