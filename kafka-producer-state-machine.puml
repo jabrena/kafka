@@ -1,0 +1,61 @@
+@startuml
+!theme plain
+title Kafka Producer Client State Machine
+
+[*] --> Initialized : create KafkaProducer()
+
+Initialized --> Connecting : first send() / initiate connection
+Initialized --> Closed : close() / cleanup resources
+
+Connecting --> Ready : connection established / metadata received
+Connecting --> ConnectionFailed : connection timeout/network error
+Connecting --> Closed : close() during connection
+
+ConnectionFailed --> Connecting : retry() [retry < maxRetries] / backoff delay
+ConnectionFailed --> Closed : [retry >= maxRetries] / give up
+
+Ready --> Sending : send(ProducerRecord) / enqueue message
+Ready --> Flushing : flush() / force send buffered messages  
+Ready --> Closed : close() / drain and close
+
+Sending --> Ready : message sent successfully / ack received
+Sending --> SendFailed : send timeout/broker error
+Sending --> Flushing : flush() while sending
+Sending --> Closed : close() / abort pending sends
+
+SendFailed --> Ready : [retries available] / retry message
+SendFailed --> Failed : [no retries left] / callback with error
+SendFailed --> Closed : close() / abort failed sends
+
+Flushing --> Ready : all buffered messages sent / flush complete
+Flushing --> FlushTimeout : flush timeout exceeded
+Flushing --> Closed : close() during flush / force close
+
+FlushTimeout --> Ready : continue normal operation
+FlushTimeout --> Closed : close() / force shutdown
+
+Failed --> Ready : continue with new messages
+Failed --> Closed : close() / cleanup
+
+Closed --> [*] : resources released
+
+note right of Connecting : Metadata refresh\nBootstrap servers\nCluster discovery
+note right of Sending : Batching enabled\nCompression applied\nPartition assignment
+note right of SendFailed : Retries: retry.backoff.ms\nMax retries: retries
+note right of Flushing : Timeout: max.block.ms\nBatch processing
+note right of Ready : Idle state\nAccepts new messages\nBackground metadata refresh
+
+state Ready {
+  [*] --> Idle
+  Idle --> MetadataRefresh : metadata.max.age.ms expired
+  MetadataRefresh --> Idle : metadata updated
+}
+
+state Sending {
+  [*] --> Batching
+  Batching --> NetworkSend : batch.size reached OR linger.ms timeout
+  NetworkSend --> AckWait : request sent to broker
+  AckWait --> [*] : acks received
+}
+
+@enduml
